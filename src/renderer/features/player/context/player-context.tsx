@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { queryKeys } from '/@/renderer/api/query-keys';
 import { albumQueries } from '/@/renderer/features/albums/api/album-api';
 import { artistsQueries } from '/@/renderer/features/artists/api/artists-api';
+import { isConnectedFollower } from '/@/renderer/features/listen-together/store/listen-together.store';
 import {
     filterSongsByPlayerFilters,
     getAlbumArtistSongsById,
@@ -193,7 +194,12 @@ export const PlayerProvider = ({ children }: { children: React.ReactNode }) => {
         (onConfirm: () => void) => {
             const shouldConfirm = useSettingsStore.getState().general.confirmQueueChanges;
 
-            if (!shouldConfirm || storeActions.getQueue().items.length === 0) {
+            // Listening along, "play now" inserts into the shared queue instead of replacing it.
+            if (
+                !shouldConfirm ||
+                isConnectedFollower() ||
+                storeActions.getQueue().items.length === 0
+            ) {
                 onConfirm();
                 return;
             }

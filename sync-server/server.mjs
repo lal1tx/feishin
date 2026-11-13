@@ -4,7 +4,9 @@
 // it already uses with the media server; the broker forwards it once to the configured
 // server's ping.view to prove identity, then forgets it.
 //
-// One host per session broadcasts playback state, everyone else follows.
+// The host's player is the source of truth and broadcasts its state. Other members send
+// commands (pause, skip, add songs, ...) that are relayed to the host to run.
+// Feishin defines what the commands mean; the broker only relays them.
 
 import { randomBytes, randomInt } from 'node:crypto';
 import { createServer } from 'node:http';
@@ -16,7 +18,7 @@ const HOST_GRACE_MS = Number(process.env.HOST_GRACE_MS || 60_000);
 const MAX_QUEUE = Number(process.env.MAX_QUEUE || 5000);
 const MAX_PAYLOAD = 16 * 1024 * 1024;
 const AUTH_TIMEOUT_MS = 10_000;
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 if (!NAVIDROME_URL) {
     console.error('NAVIDROME_URL is required, e.g. NAVIDROME_URL=http://localhost:4533');
@@ -38,6 +40,7 @@ const sessions = new Map();
  *   host: Member | null,
  *   followers: Set<Member>,
  *   state: Record<string, unknown> | null,
+ *   priority: string[],
  *   queue: unknown[] | null,
  *   queueId: string | null,
  *   endTimer: NodeJS.Timeout | null,
@@ -116,6 +119,7 @@ const broadcastMembers = (session) => {
 const stateMessage = (session, includeQueue) => ({
     ...session.state,
     now: Date.now(),
+    priority: includeQueue ? session.priority : undefined,
     queue: includeQueue ? session.queue : undefined,
     queueId: session.queueId,
     t: 'state',
@@ -156,8 +160,32 @@ const leaveSession = (ws, reason) => {
 
 const isFiniteNumber = (v) => typeof v === 'number' && Number.isFinite(v);
 
+function handleCommand(ws, msg) {
+    const session = ws.session;
+    if (!session || session.host?.ws === ws) return;
+    if (typeof msg.action !== 'string' || msg.action.length > 40 || !Array.isArray(msg.args)) {
+        return;
+    }
+    if (!session.host) return send(ws, { code: 'hostAway', t: 'error' });
+
+    send(session.host.ws, {
+        action: msg.action,
+        args: msg.args,
+        t: 'command',
+        username: ws.username,
+    });
+
+    // Let everyone else know who did it, so a pause does not come out of nowhere.
+    const activity = { action: msg.action, t: 'activity', username: ws.username };
+    send(session.host.ws, activity);
+    for (const m of session.followers) if (m.ws !== ws) send(m.ws, activity);
+}
+
 function handleMessage(ws, msg) {
     switch (msg.t) {
+        case 'command':
+            return handleCommand(ws, msg);
+
         case 'create': {
             leaveSession(ws, 'left');
             const session = {
@@ -167,6 +195,7 @@ function handleMessage(ws, msg) {
                 host: { role: 'host', username: ws.username, ws },
                 hostToken: randomBytes(16).toString('hex'),
                 hostUsername: ws.username,
+                priority: [],
                 queue: null,
                 queueId: null,
                 state: null,
@@ -244,6 +273,7 @@ function handleState(ws, msg) {
         if (typeof msg.queueId !== 'string' || msg.queueId.length > 64) return;
         session.queue = msg.queue;
         session.queueId = msg.queueId;
+        session.priority = Array.isArray(msg.priority) ? msg.priority.slice(0, MAX_QUEUE) : [];
         queueChanged = true;
     }
 
@@ -254,6 +284,8 @@ function handleState(ws, msg) {
         playing: Boolean(msg.playing),
         positionMs: Math.max(0, msg.positionMs),
         repeat: typeof msg.repeat === 'string' ? msg.repeat.slice(0, 16) : 'none',
+        seekId: isFiniteNumber(msg.seekId) ? msg.seekId : 0,
+        shuffle: typeof msg.shuffle === 'string' ? msg.shuffle.slice(0, 16) : 'none',
     };
 
     if (session.followers.size === 0) return;

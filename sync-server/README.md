@@ -1,6 +1,6 @@
 # feishin-sync
 
-A small "listen together" broker for Feishin and Navidrome (or any Subsonic-compatible server). One person hosts a session, others join with a 6-character code and hear the same song at the same position, like Spotify listen along.
+A small "listen together" broker for Feishin and Navidrome (or any Subsonic-compatible server). One person starts a session, others join with a 6-character code and hear the same song at the same position. Everyone shares one queue and can add songs, skip, pause and seek, like a Spotify Jam.
 
 - No user accounts of its own. Each client sends the Subsonic login it already uses, and the broker checks it once against your server's `ping.view`. It is never stored or logged.
 - Only relays small JSON messages over a WebSocket. Audio still streams from Navidrome to each listener with their own login.
@@ -64,27 +64,33 @@ and use `wss://music.example.com/sync/` as the server URL.
 
 ## How sync works
 
-- The host sends its queue (in play order) whenever it changes, plus a small state message on play, pause, seek, track change and every 5 seconds.
-- The broker stamps each state with its own clock. Followers measure their round trip to the broker and work out where the host is right now, so their clocks never need to agree.
-- Followers seek if they drift more than 2 seconds. They follow host actions as they happen, so a follower can pause or skip locally until the host does something next, or hit **Resync**.
-- If the host's connection drops, followers keep playing and the host can reconnect within the grace period.
+- The host's player is the single source of truth. It sends its queue (in play order, with its queue ids) whenever it changes, plus a small state message on play, pause, seek, track change and every 5 seconds.
+- Everyone has full control. When a listener pauses, skips, seeks, or adds, removes or reorders songs, Feishin sends that action to the host as a `command` instead of running it locally. The host runs it and its next state message updates everyone. Because one player applies every change in order, two people adding songs at the same moment both get their songs in.
+- A listener's "Play" on an album or song inserts it after the current song and starts it for everyone, keeping the rest of the queue.
+- Volume, mute and speed stay local. Auto DJ only runs on the host, and a listener's sleep timer takes them out of the session instead of pausing everyone.
+- The broker stamps each state with its own clock. Clients measure their round trip to the broker and work out where the host is right now, so their clocks never need to agree.
+- Listeners seek if they drift more than 2 seconds, and **Resync** re-applies the host's state.
+- If the host's connection drops, listeners keep playing (their commands get a `hostAway` error) and the host can reconnect within the grace period.
 
-## Protocol (v1)
+## Protocol (v2)
 
-JSON over WebSocket, `t` is the message type.
+JSON over WebSocket, `t` is the message type. The broker validates and relays `command`s but does not interpret them; Feishin defines what they mean.
 
-| Direction | `t`       | Fields                                                                |
-| --------- | --------- | --------------------------------------------------------------------- |
-| C to S    | `hello`   | `credential` (Subsonic auth query: `u`+`t`+`s`, `u`+`p`, or `apiKey`) |
-| S to C    | `welcome` | `username`, `version`                                                 |
-| C to S    | `create`  |                                                                       |
-| C to S    | `join`    | `code`                                                                |
-| C to S    | `resume`  | `code`, `hostToken` (host reconnect)                                  |
-| S to C    | `session` | `code`, `role`, `hostToken` (host only), `hostUsername`               |
-| S to C    | `members` | `members[]`, `hostUsername`, `hostConnected`                          |
-| C to S    | `state`   | `index`, `positionMs`, `playing`, `repeat`, `queue?`, `queueId?`      |
-| S to C    | `state`   | same plus `at`, `now` (server ms), `queueId`                          |
-| both      | `time`    | `c` (client clock), `s` (server clock)                                |
-| C to S    | `leave`   |                                                                       |
-| S to C    | `ended`   | `reason`: `left`, `hostLeft`, `hostTimeout`, `replaced`               |
-| S to C    | `error`   | `code`: `unauthorized`, `notFound`, `notHost`, `queueTooLarge`, ...   |
+| Direction | `t` | Fields |
+| --- | --- | --- |
+| C to S | `hello` | `credential` (Subsonic auth query: `u`+`t`+`s`, `u`+`p`, or `apiKey`) |
+| S to C | `welcome` | `username`, `version` |
+| C to S | `create` |  |
+| C to S | `join` | `code` |
+| C to S | `resume` | `code`, `hostToken` (host reconnect) |
+| S to C | `session` | `code`, `role`, `hostToken` (host only), `hostUsername` |
+| S to C | `members` | `members[]`, `hostUsername`, `hostConnected` |
+| C to S | `state` | host only: `index`, `positionMs`, `playing`, `repeat`, `shuffle`, `seekId`, `queue?`, `queueId?`, `priority?` |
+| S to C | `state` | same plus `at`, `now` (server ms), `queueId` |
+| C to S | `command` | listener only: `action`, `args[]` |
+| S to C | `command` | to the host: `action`, `args[]`, `username` |
+| S to C | `activity` | to everyone else: `action`, `username` |
+| both | `time` | `c` (client clock), `s` (server clock) |
+| C to S | `leave` |  |
+| S to C | `ended` | `reason`: `left`, `hostLeft`, `hostTimeout`, `replaced` |
+| S to C | `error` | `code`: `unauthorized`, `notFound`, `notHost`, `hostAway`, `queueTooLarge`, ... |

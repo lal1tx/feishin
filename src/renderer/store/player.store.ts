@@ -2446,6 +2446,28 @@ export const updateQueueSong = (songId: string, updatedSong: Song) => {
     });
 };
 
+/**
+ * Replaces the queue with another player's, keeping its unique ids, without touching
+ * playback. If the current song keeps its id, the engine carries on playing it.
+ * Used by listen together; `items` must be in play order.
+ */
+export const syncQueueFromRemote = (
+    items: QueueSong[],
+    index: number,
+    priority: string[],
+    shuffle: PlayerShuffle,
+) => {
+    usePlayerStoreBase.setState((state) => {
+        state.queue.songs = Object.fromEntries(items.map((item) => [item._uniqueId, item]));
+        state.queue.default = items.map((item) => item._uniqueId);
+        state.queue.shuffled = [];
+        state.queue.priority = priority.filter((id) => id in state.queue.songs);
+        // Shown in the UI only: with an empty shuffled list, playback follows `default`.
+        state.player.shuffle = shuffle;
+        state.player.index = index;
+    });
+};
+
 export const useCurrentPlaylistContextId = () => {
     return usePlayerStoreBase((state) => state.getCurrentSong()?._contextPlaylistId ?? null);
 };

@@ -6,10 +6,17 @@ import { useAuthStore } from '/@/renderer/store/auth.store';
 import { useSettingsStore } from '/@/renderer/store/settings.store';
 import { logger } from '/@/renderer/utils/logger';
 import { toast } from '/@/shared/components/toast/toast';
-import { ServerType, Song } from '/@/shared/types/domain-types';
-import { PlayerRepeat } from '/@/shared/types/types';
+import { QueueSong, ServerType } from '/@/shared/types/domain-types';
+import { PlayerRepeat, PlayerShuffle } from '/@/shared/types/types';
 
-// Wire protocol shared with sync-server/server.mjs (version 1).
+// Wire protocol shared with sync-server/server.mjs (version 2).
+
+/** A player action a listener asks the host to run (see use-listen-together-sync). */
+export interface CommandMessage {
+    action: string;
+    args: unknown[];
+    username: string;
+}
 
 export interface HostStateMessage {
     /** Server clock (ms) when the host's position was recorded */
@@ -19,20 +26,20 @@ export interface HostStateMessage {
     now: number;
     playing: boolean;
     positionMs: number;
-    /** Only present when the queue changed (or on join) */
-    queue?: Song[];
+    /** Up Next block (host queue ids), sent with the queue */
+    priority?: string[];
+    /** Play order, keeping the host's queue ids. Only present when it changed (or on join) */
+    queue?: QueueSong[];
     queueId: null | string;
     repeat: PlayerRepeat;
+    /** Bumped on every host seek, so listeners can follow seeks immediately */
+    seekId: number;
+    shuffle: PlayerShuffle;
 }
 
-export interface HostStateOutgoing {
-    index: number;
-    playing: boolean;
-    positionMs: number;
-    queue?: Song[];
+export type HostStateOutgoing = Omit<HostStateMessage, 'at' | 'now' | 'queueId'> & {
     queueId?: string;
-    repeat: PlayerRepeat;
-}
+};
 
 export type ListenTogetherRole = 'follower' | 'host';
 
@@ -81,6 +88,9 @@ let rttMs = 0;
 type HostStateListener = (msg: HostStateMessage, receivedAt: number) => void;
 const hostStateListeners = new Set<HostStateListener>();
 
+type CommandListener = (msg: CommandMessage) => void;
+const commandListeners = new Set<CommandListener>();
+
 /** One-way latency estimate to the sync server, in ms. */
 export const getOneWayLatencyMs = () => rttMs / 2;
 
@@ -89,6 +99,19 @@ export const onHostState = (listener: HostStateListener) => {
     return () => {
         hostStateListeners.delete(listener);
     };
+};
+
+export const onCommand = (listener: CommandListener) => {
+    commandListeners.add(listener);
+    return () => {
+        commandListeners.delete(listener);
+    };
+};
+
+/** True while this client's player actions should go to the host instead of running locally. */
+export const isConnectedFollower = () => {
+    const { role, status } = useListenTogetherStore.getState();
+    return role === 'follower' && status === 'connected';
 };
 
 export const isListenTogetherSupported = (type?: ServerType) =>
@@ -148,6 +171,16 @@ const handleMessage = (raw: string) => {
     }
 
     switch (msg.t) {
+        case 'activity': {
+            const key = `player.listenTogether_activity_${msg.action}`;
+            if (i18n.exists(key)) {
+                toast.info({ message: i18n.t(key, { username: msg.username }) });
+            }
+            return;
+        }
+        case 'command':
+            for (const listener of commandListeners) listener(msg);
+            return;
         case 'ended': {
             if (msg.reason && msg.reason !== 'left') {
                 toast.info({
@@ -164,6 +197,9 @@ const handleMessage = (raw: string) => {
             if (msg.code === 'unauthorized')
                 fail(i18n.t('player.listenTogether_error_unauthorized'));
             else if (msg.code === 'notFound') fail(i18n.t('player.listenTogether_error_notFound'));
+            else if (msg.code === 'hostAway') {
+                toast.warn({ message: i18n.t('player.listenTogether_hostAway') });
+            }
             return;
         }
         case 'members':
@@ -283,7 +319,18 @@ export const listenTogetherActions = {
         send({ t: 'leave' });
         reset();
     },
+    sendCommand: (action: string, args: unknown[]) => send({ action, args, t: 'command' }),
     sendHostState: (state: HostStateOutgoing) => send({ ...state, t: 'state' }),
+};
+
+/**
+ * For local-only pauses (e.g. the sleep timer): a listener leaves the session first,
+ * so the pause applies to them instead of everyone.
+ */
+export const leaveIfListeningAlong = () => {
+    if (useListenTogetherStore.getState().role === 'follower') {
+        listenTogetherActions.leaveSession();
+    }
 };
 
 export const useListenTogether = () => useListenTogetherStore(useShallow((state) => state));

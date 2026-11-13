@@ -2,6 +2,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import React, { useEffect } from 'react';
 
 import { eventEmitter } from '/@/renderer/events/event-emitter';
+import { useListenTogetherStore } from '/@/renderer/features/listen-together/store/listen-together.store';
 import { runAutoDjAlbumIds } from '/@/renderer/features/player/auto-dj/auto-dj-albums';
 import { runAutoDjSongs } from '/@/renderer/features/player/auto-dj/auto-dj-songs';
 import { useIsPlayerFetching, usePlayer } from '/@/renderer/features/player/context/player-context';
@@ -184,8 +185,10 @@ const AutoDJHookInner = () => {
 
 export const AutoDJHook = () => {
     const isAutoDJEnabled = useSettingsStore((state) => state.autoDJ.enabled);
+    // In a listen together session only the host's Auto DJ fills the shared queue.
+    const isListeningAlong = useListenTogetherStore((state) => state.role === 'follower');
 
-    if (!isAutoDJEnabled) {
+    if (!isAutoDJEnabled || isListeningAlong) {
         return null;
     }
 

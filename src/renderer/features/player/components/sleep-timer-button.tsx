@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import styles from './sleep-timer-button.module.css';
 
+import { leaveIfListeningAlong } from '/@/renderer/features/listen-together/store/listen-together.store';
 import { usePlayerEvents } from '/@/renderer/features/player/audio-player/hooks/use-player-events';
 import { usePlayer } from '/@/renderer/features/player/context/player-context';
 import {
@@ -97,6 +98,7 @@ const useSleepTimer = () => {
         // Cancel and pause on song change in end-of-song mode
         if (mode === 'endOfSong') {
             cancelTimer();
+            leaveIfListeningAlong();
             mediaPauseRef.current();
             return;
         }
@@ -128,6 +130,7 @@ const useSleepTimer = () => {
 
             if (remaining <= elapsedSeconds) {
                 cancelTimer();
+                leaveIfListeningAlong();
                 mediaPauseRef.current();
             } else {
                 setRemaining(remaining - elapsedSeconds);
