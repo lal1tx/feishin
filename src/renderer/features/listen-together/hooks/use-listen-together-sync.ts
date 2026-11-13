@@ -92,13 +92,11 @@ const encodeArgs = (action: SharedAction, args: unknown[]) =>
 
 const insertNextAndPlay = (songs: Song[], startSongId?: string) => {
     if (songs.length === 0) return;
-    const before = new Set(usePlayerStoreBase.getState().queue.default);
-    usePlayerStoreBase.getState().addToQueueByType(songs, Play.NEXT);
-
     const state = usePlayerStoreBase.getState();
-    const added = state.queue.default.filter((id) => !before.has(id));
-    const target = added.find((id) => state.queue.songs[id]?.id === startSongId) ?? added[0];
-    if (target) state.mediaPlay(target);
+    const currentId = state.getCurrentSong()?._uniqueId ?? '';
+    // Plain queue songs right after the current one, kept out of Up Next, so a later
+    // "Play next" still lands directly after the playing song.
+    state.addToQueueByUniqueId(songs, currentId, 'bottom', startSongId ?? songs[0].id, true);
 };
 
 const runCommand = ({ action, args, username }: CommandMessage) => {

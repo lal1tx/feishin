@@ -812,6 +812,8 @@
         "listenTogether_connecting": "Connecting...",
         "listenTogether_reconnecting": "Connection lost, reconnecting...",
         "listenTogether_copied": "Session code copied",
+        "listenTogether_copy": "Copy code",
+        "listenTogether_copyFailed": "Could not copy. Select the code and copy it by hand.",
         "listenTogether_notConfigured": "Set a listen together server in Settings > General first.",
         "listenTogether_unsupportedServer": "Listen together needs a Navidrome or Subsonic server.",
         "listenTogether_error_unauthorized": "The sync server could not verify your login with the music server.",
