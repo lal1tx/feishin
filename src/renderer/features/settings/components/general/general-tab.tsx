@@ -4,6 +4,7 @@ import { Fragment } from 'react/jsx-runtime';
 import { ApplicationSettings } from '/@/renderer/features/settings/components/general/application-settings';
 import { ControlSettings } from '/@/renderer/features/settings/components/general/control-settings';
 import { ExternalLinksSettings } from '/@/renderer/features/settings/components/general/external-links-settings';
+import { ListenTogetherSettings } from '/@/renderer/features/settings/components/general/listen-together-settings';
 import { LyricSettings } from '/@/renderer/features/settings/components/general/lyric-settings';
 import { QueryBuilderSettings } from '/@/renderer/features/settings/components/general/query-builder-settings';
 import { ScrobbleSettings } from '/@/renderer/features/settings/components/general/scrobble-settings';
@@ -27,6 +28,7 @@ export const GeneralTab = memo(() => {
             { component: ControlSettings, key: 'control' },
             { component: SidebarSettings, key: 'sidebar' },
             { component: ScrobbleSettings, key: 'scrobble' },
+            { component: ListenTogetherSettings, key: 'listenTogether' },
             { component: LyricSettings, key: 'lyrics' },
         ];
 

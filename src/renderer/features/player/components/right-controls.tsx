@@ -2,6 +2,7 @@ import { t } from 'i18next';
 import { useCallback, useEffect, useMemo, useState, WheelEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ListenTogetherButton } from '/@/renderer/features/listen-together/components/listen-together-button';
 import { PopoverPlayQueue } from '/@/renderer/features/now-playing/components/popover-play-queue';
 import { DlnaCastButton } from '/@/renderer/features/player/components/dlna-cast-button';
 import { DlnaVolumeButton } from '/@/renderer/features/player/components/dlna/volume-button';
@@ -97,6 +98,7 @@ export const RightControls = () => {
             </Group>
             <Group align="center" gap="xs" wrap="nowrap">
                 <DlnaCastButton />
+                <ListenTogetherButton />
                 <SleepTimerButton />
                 <PlayerConfig />
                 <LyricsButton />

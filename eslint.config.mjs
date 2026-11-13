@@ -51,5 +51,12 @@ export default tseslint.config(
             'single-attribute-per-line': 'off',
         },
     },
+    {
+        // Plain JavaScript (Node), return type annotations do not apply.
+        files: ['sync-server/**/*.mjs'],
+        rules: {
+            '@typescript-eslint/explicit-function-return-type': 'off',
+        },
+    },
     eslintConfigPrettier,
 );

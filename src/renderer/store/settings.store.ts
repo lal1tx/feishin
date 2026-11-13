@@ -860,7 +860,11 @@ export const ValidationSettingsStateSchema = z.object({
 /**
  * This schema is merged below to create the full SettingsSchema but not used during import validation
  */
-export const NonValidatedSettingsStateSchema = z.object({});
+export const NonValidatedSettingsStateSchema = z.object({
+    listenTogether: z.object({
+        serverUrl: z.string(),
+    }),
+});
 
 export const SettingsStateSchema = ValidationSettingsStateSchema.merge(
     NonValidatedSettingsStateSchema,
@@ -1486,6 +1490,9 @@ const initialState: SettingsState = {
             zoomOut: { allowGlobal: true, hotkey: '', isGlobal: false },
         },
         globalMediaHotkeys: true,
+    },
+    listenTogether: {
+        serverUrl: '',
     },
     lists: {
         ['albumDetail']: {
@@ -2989,6 +2996,9 @@ export const useLyricsDisplaySettings = (key: string = 'default') =>
     useSettingsStore((state) => state.lyricsDisplay[key] || state.lyricsDisplay.default, shallow);
 
 export const useRemoteSettings = () => useSettingsStore((state) => state.remote, shallow);
+
+export const useListenTogetherSettings = () =>
+    useSettingsStore((state) => state.listenTogether, shallow);
 
 export const useFontSettings = () => useSettingsStore((state) => state.font, shallow);
 

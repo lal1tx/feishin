@@ -3,7 +3,8 @@ FROM node:23-alpine AS builder
 WORKDIR /app
 
 # Copy package.json first to cache node_modules
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY sync-server/package.json sync-server/
 
 # Match packageManager in package.json (pnpm is not bundled in the Node image)
 RUN corepack enable && corepack prepare pnpm@11.5.2 --activate
