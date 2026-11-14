@@ -531,12 +531,15 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                             const playOrder = shuffle
                                 ? state.queue.shuffled.map((i) => state.queue.default[i])
                                 : state.queue.default;
-                            const lastUpNext =
-                                state.queue.priority[state.queue.priority.length - 1];
-                            const lastUpNextPos =
-                                lastUpNext === undefined ? -1 : playOrder.indexOf(lastUpNext);
+                            // Newest "Play next" goes to the top of Up next, right after the
+                            // current song (and any Queue songs pinned above the section).
+                            const firstUpNext = state.queue.priority[0];
+                            const firstUpNextPos =
+                                firstUpNext === undefined ? -1 : playOrder.indexOf(firstUpNext);
                             const insertPos =
-                                lastUpNextPos === -1 ? state.player.index + 1 : lastUpNextPos + 1;
+                                firstUpNextPos > state.player.index
+                                    ? firstUpNextPos
+                                    : state.player.index + 1;
 
                             if (shuffle) {
                                 const oldQueueLength = state.queue.default.length;
@@ -555,7 +558,7 @@ export const usePlayerStoreBase = createWithEqualityFn<PlayerState>()(
                                 ];
                             }
 
-                            state.queue.priority = [...state.queue.priority, ...ids];
+                            state.queue.priority = [...ids, ...state.queue.priority];
                             syncUpNext(state);
                         });
                         return;

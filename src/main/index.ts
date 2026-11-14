@@ -1185,7 +1185,10 @@ if (!singleInstance) {
             // Chromium 43 enforces Local Network Access: a request from the file:// renderer
             // to a private address needs this permission, which is denied without a handler,
             // so a server on a LAN address cannot be reached at all (jeffvli/feishin#2430).
+            // clipboard-sanitized-write lets navigator.clipboard.writeText() work (copy buttons);
+            // it is write-only and gated on a user gesture, reading stays denied.
             const ALLOWED_PERMISSIONS = new Set([
+                'clipboard-sanitized-write',
                 'local-fonts',
                 'local-network',
                 'local-network-access',

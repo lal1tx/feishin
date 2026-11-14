@@ -546,7 +546,7 @@
         "imagePlaceholderPriority_description": "Establece el tipo de marcador de posición de imagen a usar mientras se carga si está disponible",
         "imagePlaceholderPriority_optionBlurhash": "BlurHash",
         "imagePlaceholderPriority_optionThumbhash": "ThumbHash",
-        "upNextQueue_description": "Reproducir a continuación añade canciones a la sección Próximamente tras la canción actual, en el orden en que fueron añadidas. Próximamente permanece en su lugar cuando se mezcla o se sustituye la cola. Desactivar para insertar cada canción de Reproducir a continuación directamente tras la canción actual",
+        "upNextQueue_description": "Reproducir a continuación añade canciones al principio de la sección Próximamente tras la canción actual, así la más reciente suena primero. Próximamente permanece en su lugar cuando se mezcla o se sustituye la cola. Desactivar para insertar cada canción de Reproducir a continuación directamente tras la canción actual",
         "upNextQueue": "Cola Próximamente"
     },
     "action": {

@@ -20,12 +20,16 @@ import { TextInput } from '/@/shared/components/text-input/text-input';
 import { Text } from '/@/shared/components/text/text';
 import { toast } from '/@/shared/components/toast/toast';
 
-// navigator.clipboard only exists in secure contexts (HTTPS or localhost), so web
-// builds served over plain http fall back to the legacy copy command.
+// navigator.clipboard only exists in secure contexts (HTTPS, localhost, the desktop app)
+// and can still be refused, so fall back to the legacy copy command.
 const copyText = async (text: string) => {
     if (window.isSecureContext && navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-        return;
+        try {
+            await navigator.clipboard.writeText(text);
+            return;
+        } catch (error) {
+            logger.warn('Listen together: clipboard API refused, using fallback', { error });
+        }
     }
 
     const textarea = document.createElement('textarea');
