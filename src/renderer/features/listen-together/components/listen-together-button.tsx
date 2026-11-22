@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import { resyncListenTogether } from '/@/renderer/features/listen-together/hooks/use-listen-together-sync';
 import {
+    canHostLocally,
     isListenTogetherSupported,
     listenTogetherActions,
     useListenTogether,
@@ -48,15 +49,15 @@ export const ListenTogetherButton = () => {
     const { serverUrl } = useListenTogetherSettings();
     const server = useCurrentServer();
 
-    // Fully gated behind the setting, nothing changes for users who don't use it.
-    if (!serverUrl || !isListenTogetherSupported(server?.type)) {
+    // Needs a configured server, or the desktop app (which can host on the local network).
+    if ((!serverUrl && !canHostLocally()) || !isListenTogetherSupported(server?.type)) {
         return null;
     }
 
-    return <ListenTogetherPopover />;
+    return <ListenTogetherPopover hasServer={Boolean(serverUrl)} />;
 };
 
-const ListenTogetherPopover = () => {
+const ListenTogetherPopover = ({ hasServer }: { hasServer: boolean }) => {
     const { t } = useTranslation();
     const session = useListenTogether();
     const [opened, setOpened] = useState(false);
@@ -110,9 +111,22 @@ const ListenTogetherPopover = () => {
                             <Text isMuted size="xs">
                                 {t('player.listenTogether_description')}
                             </Text>
-                            <Button onClick={listenTogetherActions.createSession} variant="filled">
-                                {t('player.listenTogether_start')}
-                            </Button>
+                            {hasServer && (
+                                <Button
+                                    onClick={listenTogetherActions.createSession}
+                                    variant="filled"
+                                >
+                                    {t('player.listenTogether_start')}
+                                </Button>
+                            )}
+                            {canHostLocally() && (
+                                <Button
+                                    onClick={listenTogetherActions.createLocalSession}
+                                    variant={hasServer ? 'default' : 'filled'}
+                                >
+                                    {t('player.listenTogether_startLocal')}
+                                </Button>
+                            )}
                             <form
                                 onSubmit={(e) => {
                                     e.preventDefault();
@@ -123,7 +137,11 @@ const ListenTogetherPopover = () => {
                                     <TextInput
                                         autoComplete="off"
                                         onChange={(e) => setCode(e.currentTarget.value)}
-                                        placeholder={t('player.listenTogether_codePlaceholder')}
+                                        placeholder={t(
+                                            hasServer
+                                                ? 'player.listenTogether_codePlaceholder'
+                                                : 'player.listenTogether_localCodePlaceholder',
+                                        )}
                                         style={{ flex: 1 }}
                                         value={code}
                                     />
@@ -148,27 +166,57 @@ const ListenTogetherPopover = () => {
                         </Text>
                     )}
 
-                    {session.status === 'connected' && session.role === 'host' && session.code && (
-                        <Stack gap={4}>
-                            <Text size="sm">{t('player.listenTogether_hosting')}</Text>
-                            <Group gap={6}>
-                                <Code fz="xl">{session.code}</Code>
-                                <ActionIcon
-                                    icon={copied ? 'check' : 'clipboardCopy'}
-                                    onClick={() => handleCopy(session.code!)}
-                                    size="sm"
-                                    tooltip={{
-                                        label: t(
-                                            copied
-                                                ? 'player.listenTogether_copied'
-                                                : 'player.listenTogether_copy',
-                                        ),
-                                    }}
-                                    variant="transparent"
-                                />
-                            </Group>
-                        </Stack>
-                    )}
+                    {session.status === 'connected' &&
+                        session.role === 'host' &&
+                        session.code &&
+                        session.localAddresses.length > 0 && (
+                            <Stack gap={4}>
+                                <Text size="sm">{t('player.listenTogether_hostingLocal')}</Text>
+                                {session.localAddresses.map((address) => {
+                                    const joinCode = `${session.code}@${address}`;
+                                    return (
+                                        <Group gap={6} key={address} wrap="nowrap">
+                                            <Code fz="md">{joinCode}</Code>
+                                            <ActionIcon
+                                                icon="clipboardCopy"
+                                                onClick={() => handleCopy(joinCode)}
+                                                size="sm"
+                                                tooltip={{ label: t('player.listenTogether_copy') }}
+                                                variant="transparent"
+                                            />
+                                        </Group>
+                                    );
+                                })}
+                                <Text isMuted size="xs">
+                                    {t('player.listenTogether_localFirewall')}
+                                </Text>
+                            </Stack>
+                        )}
+
+                    {session.status === 'connected' &&
+                        session.role === 'host' &&
+                        session.code &&
+                        session.localAddresses.length === 0 && (
+                            <Stack gap={4}>
+                                <Text size="sm">{t('player.listenTogether_hosting')}</Text>
+                                <Group gap={6}>
+                                    <Code fz="xl">{session.code}</Code>
+                                    <ActionIcon
+                                        icon={copied ? 'check' : 'clipboardCopy'}
+                                        onClick={() => handleCopy(session.code!)}
+                                        size="sm"
+                                        tooltip={{
+                                            label: t(
+                                                copied
+                                                    ? 'player.listenTogether_copied'
+                                                    : 'player.listenTogether_copy',
+                                            ),
+                                        }}
+                                        variant="transparent"
+                                    />
+                                </Group>
+                            </Stack>
+                        )}
 
                     {session.status === 'connected' && session.role === 'follower' && (
                         <Text size="sm">

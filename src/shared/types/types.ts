@@ -233,6 +233,12 @@ export type GridCardData = {
     route: CardRoute;
 };
 
+/** The in-app listen together server: LAN IPv4 addresses and the port it listens on. */
+export interface ListenTogetherLocalServer {
+    addresses: string[];
+    port: number;
+}
+
 export type PlayQueueAddOptions = {
     byData?: QueueSong[];
     byItemType?: {

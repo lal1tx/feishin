@@ -1,4 +1,5 @@
 import i18n from 'i18next';
+import isElectron from 'is-electron';
 import { useShallow } from 'zustand/react/shallow';
 import { createWithEqualityFn } from 'zustand/traditional';
 
@@ -59,6 +60,8 @@ interface ListenTogetherState {
     code: null | string;
     hostConnected: boolean;
     hostUsername: null | string;
+    /** Set while hosting on the in-app server: `ip:port` other devices on the LAN can join */
+    localAddresses: string[];
     members: ListenTogetherMember[];
     role: ListenTogetherRole | null;
     status: ListenTogetherStatus;
@@ -68,6 +71,7 @@ const initialState: ListenTogetherState = {
     code: null,
     hostConnected: false,
     hostUsername: null,
+    localAddresses: [],
     members: [],
     role: null,
     status: 'idle',
@@ -84,6 +88,10 @@ let reconnectAttempt = 0;
 let reconnectTimer: null | ReturnType<typeof setTimeout> = null;
 let timeSyncTimer: null | ReturnType<typeof setInterval> = null;
 let rttMs = 0;
+// Where to connect instead of the configured server: the in-app server, or the address a
+// "CODE@host:port" join code points to.
+let serverOverride: null | string = null;
+let hostingLocally = false;
 
 type HostStateListener = (msg: HostStateMessage, receivedAt: number) => void;
 const hostStateListeners = new Set<HostStateListener>();
@@ -143,10 +151,17 @@ const stopTimers = () => {
 const reset = () => {
     intent = null;
     reconnectAttempt = 0;
+    serverOverride = null;
     stopTimers();
     const ws = socket;
     socket = null;
     ws?.close();
+    if (hostingLocally) {
+        hostingLocally = false;
+        window.api?.listenTogether?.stopLocalServer().catch((error) => {
+            logger.error('Listen together: could not stop the local server', { error });
+        });
+    }
     useListenTogetherStore.setState(initialState);
 };
 
@@ -244,7 +259,7 @@ const handleMessage = (raw: string) => {
 };
 
 const connect = () => {
-    const { serverUrl } = useSettingsStore.getState().listenTogether;
+    const serverUrl = serverOverride ?? useSettingsStore.getState().listenTogether.serverUrl;
     const server = useAuthStore.getState().currentServer;
 
     if (!serverUrl) {
@@ -306,15 +321,55 @@ const connect = () => {
     };
 };
 
-const start = (next: Intent) => {
+const start = (next: Intent, override: null | string = null) => {
     reset();
     intent = next;
+    serverOverride = override;
     connect();
 };
 
+/** "CODE@host:port" joins a session on that server (e.g. one hosted locally on the LAN). */
+const parseJoinCode = (raw: string) => {
+    const [code, address] = raw.trim().split('@');
+    return { address: address?.trim() || null, code: code.trim().toUpperCase() };
+};
+
+/** Desktop only: runs the sync server inside the app, for sessions on the local network. */
+export const canHostLocally = () => isElectron() && Boolean(window.api?.listenTogether);
+
+const createLocalSession = async () => {
+    const server = useAuthStore.getState().currentServer;
+    if (!server?.url || !server.credential || !isListenTogetherSupported(server.type)) {
+        fail(i18n.t('player.listenTogether_unsupportedServer'));
+        return;
+    }
+
+    reset();
+    useListenTogetherStore.setState({ status: 'connecting' });
+
+    try {
+        const local = await window.api.listenTogether.startLocalServer(server.url);
+        hostingLocally = true;
+        intent = { kind: 'create' };
+        serverOverride = `ws://127.0.0.1:${local.port}`;
+        useListenTogetherStore.setState({
+            localAddresses: local.addresses.map((address) => `${address}:${local.port}`),
+        });
+        logger.info('Listen together: hosting on the local server', local);
+        connect();
+    } catch (error) {
+        logger.error('Listen together: could not start the local server', { error });
+        fail(i18n.t('player.listenTogether_error_localServer'));
+    }
+};
+
 export const listenTogetherActions = {
+    createLocalSession,
     createSession: () => start({ kind: 'create' }),
-    joinSession: (code: string) => start({ code: code.trim().toUpperCase(), kind: 'join' }),
+    joinSession: (raw: string) => {
+        const { address, code } = parseJoinCode(raw);
+        start({ code, kind: 'join' }, address);
+    },
     leaveSession: () => {
         send({ t: 'leave' });
         reset();

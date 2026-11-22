@@ -1,6 +1,7 @@
 import './autodiscover';
 import './dlna';
 import './custom-themes';
+import './listen-together';
 import './lyrics';
 import './player';
 import './remote';

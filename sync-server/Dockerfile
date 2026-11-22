@@ -10,7 +10,7 @@ RUN corepack enable && corepack prepare pnpm@11.5.2 --activate
 COPY package.json ./
 RUN pnpm install --prod --ignore-workspace
 
-COPY server.mjs ./
+COPY server.mjs broker.mjs ./
 
 ENV NODE_ENV=production PORT=4534
 EXPOSE 4534
