@@ -58,6 +58,25 @@ const normalizeVolume = (volume: number) => {
 const EMPTY_SOURCE =
     'data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU2LjM2LjEwMAAAAAAAAAAAAAAA//OEAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAEAAABIADAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDV1dXV1dXV1dXV1dXV1dXV1dXV1dXV1dXV6urq6urq6urq6urq6urq6urq6urq6urq6v////////////////////////////////8AAAAATGF2YzU2LjQxAAAAAAAAAAAAAAAAJAAAAAAAAAAAASDs90hvAAAAAAAAAAAAAAAAAAAA//MUZAAAAAGkAAAAAAAAA0gAAAAATEFN//MUZAMAAAGkAAAAAAAAA0gAAAAARTMu//MUZAYAAAGkAAAAAAAAA0gAAAAAOTku//MUZAkAAAGkAAAAAAAAA0gAAAAANVVV';
 
+// load() rewinds to 0 and stops; restore the position and, if the user is listening,
+// playback.
+const resumeAt = (audio: HTMLAudioElement, position: number, shouldPlay: boolean) => {
+    if (position > 0) {
+        audio.addEventListener(
+            'loadedmetadata',
+            () => {
+                audio.currentTime = position;
+            },
+            { once: true },
+        );
+    }
+    if (shouldPlay) {
+        audio.play().catch((error) => {
+            logger.error('Playback retry failed to start', { error: String(error) });
+        });
+    }
+};
+
 export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
     const {
         isMuted,
@@ -85,6 +104,14 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
     const player2Ref = useRef<null | ReactPlayer>(null);
     const networkRetryCount1 = useRef(0);
     const networkRetryCount2 = useRef(0);
+    // Read from retry timeouts, which outlive the render that scheduled them.
+    const playerNumRef = useRef(playerNum);
+    const playerStatusRef = useRef(playerStatus);
+
+    useEffect(() => {
+        playerNumRef.current = playerNum;
+        playerStatusRef.current = playerStatus;
+    }, [playerNum, playerStatus]);
     const [ReactPlayerComponent, setReactPlayerComponent] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -194,7 +221,11 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         }
     };
 
+    // Errors on the inactive slot (preloading the next song) must not touch the song that
+    // is playing: no pause, no skip. That slot is reloaded quietly, and again when it
+    // becomes active if it is still broken.
     const handleOnError = (
+        slot: 1 | 2,
         playerRef: React.RefObject<null | ReactPlayer>,
         onEnded: () => void,
         onErrorPause: () => void,
@@ -214,32 +245,43 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
             const isNetworkError =
                 code === MediaError.MEDIA_ERR_NETWORK ||
                 code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED;
+            const isActive = playerNumRef.current === slot;
 
             if (isNetworkError) {
                 if (networkRetryCountRef.current < MAX_NETWORK_RETRIES) {
                     networkRetryCountRef.current += 1;
                     logger.warn('Playback error, retrying', {
+                        active: isActive,
                         code,
                         label,
                         retryCount: networkRetryCountRef.current,
                     });
                     const audio = target;
+                    // Keep the position so a retry resumes instead of restarting the song.
+                    const position = audio.currentTime;
+                    const failedSrc = audio.src;
                     setTimeout(() => {
-                        pauseBothPlayers();
+                        // The slot moved on to another song meanwhile; nothing to retry.
+                        if (audio.src !== failedSrc) return;
+                        const isActiveNow = playerNumRef.current === slot;
                         audio.load();
-                        audio.play().catch(() => {
-                            logger.error('Playback error, retries exhausted', {
-                                code,
-                                label,
-                                retryCount: networkRetryCountRef.current,
-                            });
-                        });
+                        if (!isActiveNow) return;
+                        resumeAt(audio, position, playerStatusRef.current === PlayerStatus.PLAYING);
                     }, NETWORK_RETRY_DELAY_MS);
                     return;
                 }
             }
 
             if (code !== MediaError.MEDIA_ERR_DECODE && !isNetworkError) {
+                return;
+            }
+
+            if (!isActive) {
+                logger.warn('Playback error on the preloading player, ignoring', {
+                    code,
+                    label,
+                    retryCount: networkRetryCountRef.current,
+                });
                 return;
             }
 
@@ -268,6 +310,17 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
         networkRetryCount1.current = 0;
         networkRetryCount2.current = 0;
     }, [src1, src2]);
+
+    // A slot whose preload failed keeps its error; reload it once it becomes active.
+    useEffect(() => {
+        const internal = (playerNum === 1 ? player1Ref : player2Ref).current?.getInternalPlayer();
+        if (!(internal instanceof HTMLAudioElement) || !internal.error) return;
+
+        logger.warn('Reloading player that failed while preloading', { playerNum });
+        (playerNum === 1 ? networkRetryCount1 : networkRetryCount2).current = 0;
+        internal.load();
+        resumeAt(internal, 0, playerStatusRef.current === PlayerStatus.PLAYING);
+    }, [playerNum]);
 
     // When not playing, always pause both players — even during a transition
     useEffect(() => {
@@ -335,6 +388,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                 muted={isMuted}
                 onEnded={src1 && !loopPlayer1 ? () => onEndedPlayer1() : undefined}
                 onError={handleOnError(
+                    1,
                     player1Ref,
                     () => onEndedPlayer1(),
                     onErrorPause,
@@ -361,6 +415,7 @@ export const WebPlayerEngine = (props: WebPlayerEngineProps) => {
                 muted={isMuted}
                 onEnded={src2 && !loopPlayer2 ? () => onEndedPlayer2() : undefined}
                 onError={handleOnError(
+                    2,
                     player2Ref,
                     () => onEndedPlayer2(),
                     onErrorPause,
